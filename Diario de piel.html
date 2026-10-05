@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Diario de piel</title>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);--bg:#faf6f1;--card:#fff;--tx:#2e2a26;--mu:#7a716a;--ac:#b5654a;--ac2:#f3e1d9;--ok:#4f7f60;--ok2:#dcebe0;--bd:#e8dfd6}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#1d1a18;--card:#282421;--tx:#f0e9e2;--mu:#a69b92;--ac:#e08f72;--ac2:#3b2d27;--ok:#8cc29f;--ok2:#27382d;--bd:#3a342f}}
+:root[data-theme="dark"]{--bg:#1d1a18;--card:#282421;--tx:#f0e9e2;--mu:#a69b92;--ac:#e08f72;--ac2:#3b2d27;--ok:#8cc29f;--ok2:#27382d;--bd:#3a342f}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:560px;margin:0 auto;padding:14px 14px 40px}
+h1{font-size:20px;margin:0}h2{font-size:15px;margin:0 0 10px}
+header{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px}
+#st{font-size:12px;color:var(--mu)}
+.tabs{display:flex;gap:6px;margin-bottom:12px}
+.tabs button{flex:1}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:14px;margin-bottom:12px}
+button,input,textarea{font:inherit;color:var(--tx)}
+button{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:8px 12px;cursor:pointer}
+button.on{background:var(--ac);border-color:var(--ac);color:#fff}
+button.go{background:var(--ok2);border-color:var(--ok);color:var(--ok)}
+.chip{border-radius:999px;padding:6px 12px;margin:0 6px 6px 0}
+.chip.on{background:var(--ac);color:#fff}
+.row{display:flex;gap:8px;align-items:center}.sp{justify-content:space-between}
+.big{flex:1;padding:14px 8px;font-weight:600}
+input[type=text],input[type=number],input[type=date],textarea{width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--bd);border-radius:10px;padding:8px 10px}
+.mu{color:var(--mu);font-size:13px}
+.ph{display:inline-block;color:#fff;border-radius:999px;padding:2px 10px;font-size:13px}
+.sup{display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--bd);width:100%;background:none;border-left:0;border-right:0;border-top:0;border-radius:0;text-align:left}
+.sup:last-child{border-bottom:0}
+.box{width:22px;height:22px;border:2px solid var(--bd);border-radius:6px;display:inline-flex;align-items:center;justify-content:center;flex:none}
+.sup.on .box{background:var(--ok);border-color:var(--ok);color:#fff}
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.cal button{padding:6px 0;font-size:12px;border-radius:8px}
+.cal .y{background:var(--ac);color:#fff;border-color:var(--ac)}.cal .n{background:var(--ok2);border-color:var(--ok2)}
+.bar{height:8px;border-radius:4px;background:var(--bd);overflow:hidden;margin:3px 0 10px}.bar i{display:block;height:100%;background:var(--ac)}
+.x{padding:2px 8px}
+</style></head><body><main>
+<header><h1>Diario de piel</h1><span id="st"></span></header>
+<div class="tabs" id="tabs"></div>
+<div id="app"></div>
+</main>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const iso=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+const parse=s=>{const[a,b,c]=s.split('-').map(Number);return new Date(a,b-1,c)};
+const diff=(a,b)=>Math.round((parse(a)-parse(b))/864e5);
+const addD=(s,n)=>{const d=parse(s);d.setDate(d.getDate()+n);return iso(d)};
+const TODAY=iso(new Date());
+const BASE=['Lácteos','Azúcar','Gluten','Chocolate','Fritos','Procesados','Carne roja','Huevos','Soja','Alcohol','Café','Picante'];
+const ZONES=['Barbilla','Mentón','Cuello'];
+const PH=[{n:'Menstrual',c:'#b5483f'},{n:'Folicular',c:'#4f8aa3'},{n:'Ovulatoria',c:'#b9892b'},{n:'Lútea',c:'#7d5fa3'}];
+let S={periods:[],cycleLen:28,supps:[],foods:[],days:{}};
+let ui={tab:'hoy',d:TODAY,win:2};
+const MEALS=[['d','Desayuno'],['c','Comida'],['n','Cena']];
+const blank=()=>({pimple:null,count:1,zones:[],foods:{d:[],c:[],n:[]},supps:{d:[],c:[],n:[]},note:''});
+const allF=e=>[...new Set([...e.foods.d,...e.foods.c,...e.foods.n])];
+const norm=()=>{Object.values(S.days).forEach(e=>{if(Array.isArray(e.foods))e.foods={d:[],c:e.foods,n:[]};if(Array.isArray(e.supps))e.supps={d:e.supps,c:[],n:[]};e.foods={d:[],c:[],n:[],...e.foods};e.supps={d:[],c:[],n:[],...e.supps}})};
+const get=d=>S.days[d]||blank();
+const ent=d=>S.days[d]||(S.days[d]=blank());
+const tog=(arr,v)=>{const i=arr.indexOf(v);i<0?arr.push(v):arr.splice(i,1)};
+
+function phase(d){
+  const ps=S.periods.filter(x=>x<=d).sort().pop();if(!ps)return null;
+  const cd=diff(d,ps)+1;if(cd>S.cycleLen+14)return null;
+  const ov=S.cycleLen-14;const k=cd<=5?0:cd<ov-1?1:cd<=ov+1?2:3;
+  return{cd,k,n:PH[k].n,c:PH[k].c};
+}
+
+/* ---- persistencia ---- */
+let docRef=null,timer,ready=false,dirty=false;
+const setSt=t=>$('#st').textContent=t;
+async function flush(){
+  if(!ready||!dirty)return;dirty=false;
+  const j=JSON.stringify(S);
+  try{localStorage.setItem('diario-piel',j)}catch(e){}
+  try{
+    if(docRef){await docRef.set({json:j});setSt('Guardado en tu cuenta')}
+    else setSt('Guardado solo en este navegador');
+  }catch(e){dirty=true;setSt('Error al guardar, reintentando…');setTimeout(flush,3000)}
+}
+function save(){dirty=true;setSt('Guardando…');clearTimeout(timer);timer=setTimeout(flush,200)}
+addEventListener('pagehide',flush);
+document.addEventListener('visibilitychange',()=>{if(document.hidden)flush()});
+async function init(){
+  render();
+  let fromDb=false,fromLocal=false;
+  try{
+    if(window.claude){
+      const db=await claude.use('db'),u=await claude.use('user');
+      if(db&&u){const id=await u.id();
+        if(id){docRef=db.doc('data/users/'+id+'/tracker');const s=await docRef.get();
+          if(s.exists){Object.assign(S,JSON.parse(s.data().json));fromDb=true}}}
+    }
+  }catch(e){docRef=null}
+  if(!fromDb){try{const l=localStorage.getItem('diario-piel');if(l){Object.assign(S,JSON.parse(l));fromLocal=true}}catch(e){}}
+  norm();ready=true;
+  if(docRef&&fromLocal){dirty=true;flush()}
+  else setSt(docRef?'Guardado en tu cuenta':'Guardado solo en este navegador');
+  render();
+}
+
+/* ---- vistas ---- */
+function chips(list,sel,a,m){return list.map(f=>`<button class="chip ${sel.includes(f)?'on':''}" data-a="${a}" data-v="${esc(m?m+'|'+f:f)}">${esc(f)}</button>`).join('')}
+
+function vHoy(){
+  const d=ui.d,e=get(d),p=phase(d);
+  const fl=new Date(parse(d)).toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long'});
+  const prev=[1,2,3].map(i=>{const f=allF(get(addD(d,-i)));return f.length?`<b>${['','Ayer','Anteayer','Hace 3 días'][i]}:</b> ${f.map(esc).join(', ')}`:''}).filter(Boolean).join('<br>');
+  const isP=S.periods.includes(d);
+  const nSup=MEALS.reduce((a,[m])=>a+e.supps[m].filter(x=>S.supps.includes(x)).length,0);
+  return `
+  <div class="card"><div class="row sp"><button data-a="day" data-v="-1">‹</button>
+    <div style="text-align:center"><b style="text-transform:capitalize">${fl}</b>${d!==TODAY?`<br><button class="x" data-a="day" data-v="today">Ir a hoy</button>`:''}</div>
+    <button data-a="day" data-v="1" ${d>=TODAY?'disabled':''}>›</button></div></div>
+  <div class="card"><h2>Ciclo</h2>
+    <p style="margin:0 0 10px">${p?`Día ${p.cd} · <span class="ph" style="background:${p.c}">${p.n}</span>`:'<span class="mu">Marca el primer día de tu última regla para calcular la fase.</span>'}</p>
+    <button class="${isP?'on':''}" data-a="period">${isP?'✓ Este día empieza mi regla':'Este día empieza mi regla'}</button></div>
+  <div class="card"><h2>Zona barbilla, mentón y cuello</h2>
+    <div class="row"><button class="big ${e.pimple===false?'go':''}" data-a="pim" data-v="0">Sin granos nuevos</button>
+    <button class="big ${e.pimple===true?'on':''}" data-a="pim" data-v="1">Grano nuevo</button></div>
+    ${e.pimple===true?`<div class="row" style="margin:12px 0"><span>Cuántos:</span><button data-a="cnt" data-v="-1">−</button><b>${e.count}</b><button data-a="cnt" data-v="1">+</button></div>
+    <div>${chips(ZONES,e.zones,'zone')}</div>`:''}</div>
+  <div class="card"><h2>Alimentos</h2>
+    ${MEALS.map(([m,l])=>`<div style="margin-bottom:12px"><b>${l}</b><div style="margin-top:6px">${chips(BASE.concat(S.foods),e.foods[m],'food',m)}</div>
+    <div class="row"><input type="text" id="nf${m}" placeholder="Otro alimento…" data-enter="addfood" data-v="${m}"><button data-a="addfood" data-v="${m}">Añadir</button></div></div>`).join('')}
+    ${prev?`<p class="mu" style="margin:4px 0 0">${prev}</p>`:''}</div>
+  <div class="card"><div class="row sp"><h2 style="margin:0">Suplementos</h2><span class="mu">${S.supps.length?nSup+' tomas':''}</span></div>
+    ${S.supps.length?MEALS.map(([m,l])=>`<div style="margin-top:12px"><div class="row sp"><b>${l}</b><button class="x" data-a="allsupp" data-v="${m}">Marcar todos</button></div><div style="margin-top:6px">${chips(S.supps,e.supps[m],'supp',m)}</div></div>`).join(''):'<p class="mu" style="margin:0">Añade tus suplementos en Ajustes.</p>'}</div>
+  <div class="card"><h2>Notas</h2><textarea id="note" rows="2" placeholder="Estrés, sueño, cosmética nueva…">${esc(e.note)}</textarea></div>`;
+}
+
+function vDatos(){
+  const logged=Object.keys(S.days).filter(d=>S.days[d].pimple!==null);
+  const pd=logged.filter(d=>S.days[d].pimple);
+  let cal='';for(let i=34;i>=0;i--){const d=addD(TODAY,-i),e=S.days[d];
+    cal+=`<button class="${e&&e.pimple===true?'y':e&&e.pimple===false?'n':''}" data-a="goto" data-v="${d}">${parse(d).getDate()}</button>`}
+  const ph=[0,1,2,3].map(k=>{const ds=logged.filter(d=>{const p=phase(d);return p&&p.k===k});const n=ds.length,y=ds.filter(d=>S.days[d].pimple).length;return{k,n,y}});
+  const w=ui.win;
+  const before=d=>{const s=new Set();for(let i=1;i<=w;i++)allF(get(addD(d,-i))).forEach(f=>s.add(f));return s};
+  const all=new Set();Object.values(S.days).forEach(x=>allF(x).forEach(f=>all.add(f)));
+  const rows=[];
+  all.forEach(f=>{let eN=0,eP=0,nN=0,nP=0;
+    logged.forEach(d=>{const ex=before(d).has(f),y=S.days[d].pimple?1:0;if(ex){eN++;eP+=y}else{nN++;nP+=y}});
+    if(eN>=3&&nN>=3)rows.push({f,eN,a:eP/eN,b:nP/nN})});
+  rows.sort((x,y)=>(y.a-y.b)-(x.a-x.b));
+  const pc=x=>Math.round(x*100)+'%';
+  return `
+  <div class="card"><h2>Últimos 35 días</h2><div class="cal">${cal}</div>
+    <p class="mu" style="margin:10px 0 0"><span class="ph" style="background:var(--ac)">grano</span> <span class="ph" style="background:var(--ok)">sin granos</span> · toca un día para editarlo</p></div>
+  <div class="card"><h2>Resumen</h2><p style="margin:0">${logged.length} días registrados · ${pd.length} con grano nuevo${logged.length?` (${pc(pd.length/logged.length)})`:''}</p>
+    ${logged.length<14?'<p class="mu" style="margin:8px 0 0">Con menos de 2 semanas de registro los patrones no son fiables. Sigue anotando.</p>':''}</div>
+  <div class="card"><h2>Días con grano nuevo por fase del ciclo</h2>
+    ${ph.map(x=>`<div class="row sp"><span><span class="ph" style="background:${PH[x.k].c}">${PH[x.k].n}</span></span><span class="mu">${x.n?pc(x.y/x.n)+' · '+x.y+' de '+x.n+' días':'sin datos'}</span></div><div class="bar"><i style="width:${x.n?x.y/x.n*100:0}%"></i></div>`).join('')}</div>
+  <div class="card"><h2>Alimentos y granos nuevos</h2>
+    <div class="row" style="margin-bottom:10px"><span class="mu">Alimentos tomados en los</span>${[1,2,3].map(n=>`<button class="chip ${w===n?'on':''}" style="margin:0" data-a="win" data-v="${n}">${n}</button>`).join('')}<span class="mu">días previos</span></div>
+    ${rows.length?rows.map(r=>`<div class="row sp"><b>${esc(r.f)}</b><span class="mu">con: ${pc(r.a)} · sin: ${pc(r.b)} · ${r.eN} días</span></div><div class="bar"><i style="width:${r.a*100}%"></i></div>`).join('')+'<p class="mu" style="margin:0">Porcentaje de días con grano nuevo cuando el alimento estaba (o no) en los días previos. Es una pista, no una prueba: varios alimentos suelen coincidir y el ciclo también influye.</p>':'<p class="mu" style="margin:0">Aparecerá cuando un alimento tenga al menos 3 días registrados con él y 3 sin él.</p>'}</div>`;
+}
+
+function vAj(){
+  const ps=[...S.periods].sort().reverse();
+  return `
+  <div class="card"><h2>Duración habitual del ciclo (días)</h2><input type="number" id="cl" min="20" max="45" value="${S.cycleLen}"></div>
+  <div class="card"><h2>Inicios de regla registrados</h2>
+    ${ps.map(p=>`<div class="row sp" style="margin-bottom:6px"><span>${parse(p).toLocaleDateString('es-ES',{day:'numeric',month:'long',year:'numeric'})}</span><button class="x" data-a="delp" data-v="${p}">✕</button></div>`).join('')||'<p class="mu" style="margin:0 0 8px">Ninguno todavía.</p>'}
+    <div class="row"><input type="date" id="np" max="${TODAY}"><button data-a="addp">Añadir</button></div></div>
+  <div class="card"><h2>Mis suplementos</h2>
+    ${S.supps.map(s=>`<div class="row sp" style="margin-bottom:6px"><span>${esc(s)}</span><button class="x" data-a="dels" data-v="${esc(s)}">✕</button></div>`).join('')}
+    <div class="row"><input type="text" id="ns" placeholder="Nombre del suplemento" data-enter="adds"><button data-a="adds">Añadir</button></div></div>
+  <div class="card"><h2>Mis alimentos añadidos</h2>
+    ${S.foods.map(s=>`<div class="row sp" style="margin-bottom:6px"><span>${esc(s)}</span><button class="x" data-a="delf" data-v="${esc(s)}">✕</button></div>`).join('')||'<p class="mu" style="margin:0">Los que añadas desde “Hoy” aparecerán aquí.</p>'}</div>`;
+}
+
+function render(){
+  $('#tabs').innerHTML=[['hoy','Hoy'],['datos','Análisis'],['aj','Ajustes']].map(([k,l])=>`<button class="${ui.tab===k?'on':''}" data-a="tab" data-v="${k}">${l}</button>`).join('');
+  $('#app').innerHTML=!ready?'<p class="mu">Cargando tus datos…</p>':ui.tab==='hoy'?vHoy():ui.tab==='datos'?vDatos():vAj();
+}
+
+/* ---- acciones ---- */
+function act(a,v){
+  const d=ui.d;
+  switch(a){
+    case 'tab':ui.tab=v;break;
+    case 'day':ui.d=v==='today'?TODAY:addD(d,+v);break;
+    case 'goto':ui.d=v;ui.tab='hoy';scrollTo(0,0);break;
+    case 'win':ui.win=+v;break;
+    case 'period':tog(S.periods,d);save();break;
+    case 'pim':{const e=ent(d);e.pimple=v==='1';save();break}
+    case 'cnt':{const e=ent(d);e.count=Math.max(1,e.count+ +v);save();break}
+    case 'zone':tog(ent(d).zones,v);save();break;
+    case 'food':{const i=v.indexOf('|');tog(ent(d).foods[v.slice(0,i)],v.slice(i+1));save();break}
+    case 'supp':{const i=v.indexOf('|');tog(ent(d).supps[v.slice(0,i)],v.slice(i+1));save();break}
+    case 'allsupp':ent(d).supps[v]=[...S.supps];save();break;
+    case 'addfood':{const x=$('#nf'+v).value.trim();if(x){if(!BASE.concat(S.foods).includes(x))S.foods.push(x);const l=ent(d).foods[v];if(!l.includes(x))l.push(x);save()}break}
+    case 'adds':{const x=$('#ns').value.trim();if(x&&!S.supps.includes(x)){S.supps.push(x);save()}break}
+    case 'dels':S.supps=S.supps.filter(s=>s!==v);save();break;
+    case 'delf':S.foods=S.foods.filter(s=>s!==v);save();break;
+    case 'addp':{const x=$('#np').value;if(x&&!S.periods.includes(x)){S.periods.push(x);save()}break}
+    case 'delp':S.periods=S.periods.filter(s=>s!==v);save();break;
+  }
+  render();
+}
+document.addEventListener('click',e=>{const t=e.target.closest('[data-a]');if(t&&!t.disabled)act(t.dataset.a,t.dataset.v)});
+document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.dataset.enter)act(e.target.dataset.enter,e.target.dataset.v)});
+document.addEventListener('input',e=>{if(e.target.id==='note'){ent(ui.d).note=e.target.value;save()}});
+document.addEventListener('change',e=>{
+  if(e.target.id==='cl'){const n=+e.target.value;if(n>=20&&n<=45){S.cycleLen=n;save()}}
+});
+init();
+</script></body></html>
